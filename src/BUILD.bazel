@@ -1,0 +1,38 @@
+cc_library(
+    name = "life_lib",
+    srcs = [
+        "entry.cc",
+        "tracker.cc",
+    ],
+    hdrs = [
+        "entry.h",
+        "tracker.h",
+    ],
+    copts = ["-std=c++17"],
+    deps = [
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/strings",
+    ],
+)
+
+cc_binary(
+    name = "life",
+    srcs = ["main.cc"],
+    deps = [
+        ":life_lib",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/strings",
+    ],
+)
+
+cc_test(
+    name = "entry_test",
+    srcs = ["entry_test.cc"],
+    copts = ["-std=c++17"],
+    deps = [
+        "//src:life_lib",
+        "@googletest//:gtest_main",
+    ],
+)

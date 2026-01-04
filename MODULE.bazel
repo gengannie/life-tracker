@@ -1,0 +1,7 @@
+module(
+    name = "life_tracker",
+    version = "0.1.0",
+)
+
+bazel_dep(name = "abseil-cpp", version = "20230802.1")
+bazel_dep(name = "googletest", version = "1.14.0")
