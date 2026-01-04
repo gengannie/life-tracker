@@ -17,6 +17,15 @@ bazel run //src:life -- list
 ```
 
 
+generate report:
+
+```
+bazel build //...
+bazel run //src:life -- report --days=7 --out="$PWD/report.html"
+open report.html
+
+```
+
 # prompt
 
 Codex Instruction Prompt — Life Tracker (C++ / Google OSS)
