@@ -1,0 +1,10 @@
+# Bazel build outputs (generated)
+bazel-*
+MODULE.bazel*
+
+# VS Code local files (keep settings.json tracked)
+.vscode/*
+!.vscode/settings.json
+
+# macOS junk
+.DS_Store

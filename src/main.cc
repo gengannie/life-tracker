@@ -25,18 +25,16 @@ std::string TodayIsoDate() {
   localtime_r(&t, &tm);
 #endif
   char buf[11];
-  std::snprintf(buf, sizeof(buf), "%04d-%02d-%02d",
-                tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
+  std::snprintf(buf, sizeof(buf), "%04d-%02d-%02d", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
   return std::string(buf);
 }
 
 void PrintUsage() {
-  std::cerr
-      << "Usage:\n"
-      << "  life add --mood=3 --note=\"text\" [--date=YYYY-MM-DD]\n"
-      << "  life list\n"
-      << "Flags:\n"
-      << "  --data_path=PATH   Where to store entries (default: data/entries.csv)\n";
+  std::cerr << "Usage:\n"
+            << "  life add --mood=3 --note=\"text\" [--date=YYYY-MM-DD]\n"
+            << "  life list\n"
+            << "Flags:\n"
+            << "  --data_path=PATH   Where to store entries (default: data/entries.csv)\n";
 }
 
 int RunAdd(const std::vector<std::string>& args) {
@@ -57,8 +55,7 @@ int RunAdd(const std::vector<std::string>& args) {
 
   tracker.Add(e);
 
-  std::cout << "Added: " << e.date << " mood=" << e.mood << " note=\"" << e.note
-            << "\"\n";
+  std::cout << "Added: " << e.date << " mood=" << e.mood << " note=\"" << e.note << "\"\n";
   return 0;
 }
 
