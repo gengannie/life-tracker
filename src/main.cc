@@ -14,12 +14,13 @@
 #include "src/path_utils.h"
 #include "src/tracker.h"
 
-ABSL_FLAG(int, mood, 0, "Mood rating 1..5");
+ABSL_FLAG(int, mood, 0, "Mood rating 1..100");
 ABSL_FLAG(std::string, note, "", "Free-form note");
 ABSL_FLAG(std::string, date, "", "Date in YYYY-MM-DD (default: today)");
 ABSL_FLAG(std::string, data_path, "data/entries.csv", "Path to entries CSV");
 ABSL_FLAG(int, days, 7, "Number of days to include in reports");
-ABSL_FLAG(std::string, out, "report.html", "Where to write generated reports");
+ABSL_FLAG(std::string, out, "report.html", "Where to write generated reports/exports");
+ABSL_FLAG(std::string, format, "json", "Export format (currently: json)");
 
 namespace life_tracker {
 namespace {
@@ -76,6 +77,10 @@ std::string RenderSvg(const std::vector<DayMood>& samples) {
     return "<div class=\"empty\">No data to chart.</div>";
   }
 
+  const int min_mood = 1;
+  const int max_mood = 100;
+  const double mood_range = static_cast<double>(max_mood - min_mood);
+
   const int width = 720;
   const int height = 360;
   const int padding = 48;
@@ -85,11 +90,16 @@ std::string RenderSvg(const std::vector<DayMood>& samples) {
   const double x_step =
       samples.size() > 1 ? static_cast<double>(plot_width) / (samples.size() - 1) : 0.0;
 
+  auto MoodToY = [&](int mood) {
+    const double clamped = std::min(std::max(mood, min_mood), max_mood);
+    const double normalized = (max_mood - clamped) / mood_range;  // 0 at max, 1 at min.
+    return padding + normalized * plot_height;
+  };
+
   std::ostringstream points;
   for (size_t i = 0; i < samples.size(); ++i) {
     const double x = padding + x_step * i;
-    // Mood range 1..5 mapped top (5) to bottom (1).
-    const double y = padding + (5 - samples[i].mood) * (plot_height / 4.0);
+    const double y = MoodToY(samples[i].mood);
     points << x << "," << y;
     if (i + 1 < samples.size()) points << " ";
   }
@@ -97,7 +107,7 @@ std::string RenderSvg(const std::vector<DayMood>& samples) {
   std::ostringstream circles;
   for (size_t i = 0; i < samples.size(); ++i) {
     const double x = padding + x_step * i;
-    const double y = padding + (5 - samples[i].mood) * (plot_height / 4.0);
+    const double y = MoodToY(samples[i].mood);
     circles << "<circle cx=\"" << x << "\" cy=\"" << y
             << "\" r=\"5\" fill=\"#2563eb\" stroke=\"white\" stroke-width=\"2\"></circle>";
   }
@@ -105,7 +115,7 @@ std::string RenderSvg(const std::vector<DayMood>& samples) {
   std::ostringstream svg;
   svg << "<svg width=\"" << width << "\" height=\"" << height << "\" viewBox=\"0 0 " << width << " "
       << height << "\" role=\"img\" "
-      << "aria-label=\"Mood over time\">";
+      << "aria-label=\"Mood over time (1-100)\">";
   svg << "<rect x=\"0\" y=\"0\" width=\"" << width << "\" height=\"" << height
       << "\" fill=\"#f8fafc\" />";
   svg << "<polyline fill=\"none\" stroke=\"#2563eb\" stroke-width=\"3\" points=\"" << points.str()
@@ -117,6 +127,9 @@ std::string RenderSvg(const std::vector<DayMood>& samples) {
   svg << "<text x=\"" << width - padding << "\" y=\"" << height - padding / 3
       << "\" fill=\"#475569\" font-family=\"Helvetica, Arial, sans-serif\" font-size=\"12\" "
       << "text-anchor=\"end\">Newer</text>";
+  svg << "<text x=\"" << padding << "\" y=\"" << padding / 1.8
+      << "\" fill=\"#475569\" font-family=\"Helvetica, Arial, sans-serif\" font-size=\"12\">Mood "
+         "(1-100)</text>";
   svg << "</svg>";
   return svg.str();
 }
@@ -194,13 +207,15 @@ std::string TodayIsoDate() {
 
 void PrintUsage() {
   std::cerr << "Usage:\n"
-            << "  life add --mood=3 --note=\"text\" [--date=YYYY-MM-DD]\n"
+            << "  life add --mood=42 --note=\"text\" [--date=YYYY-MM-DD]\n"
             << "  life list\n"
             << "  life report [--days=N] [--out=PATH]\n"
+            << "  life export [--format=json] [--out=PATH]\n"
             << "Flags:\n"
             << "  --data_path=PATH   Where to store entries (default: data/entries.csv)\n"
             << "  --days=N           Number of days to include in reports (default: 7)\n"
-            << "  --out=PATH         Where to write reports (default: report.html)\n";
+            << "  --out=PATH         Where to write reports/exports (default: report.html)\n"
+            << "  --format=FORMAT    Export format (default: json)\n";
 }
 
 int RunAdd(const std::vector<std::string>& args) {
@@ -293,6 +308,89 @@ int RunReport(const std::vector<std::string>& args) {
   return 0;
 }
 
+std::string JsonEscape(const std::string& s) {
+  std::string out;
+  out.reserve(s.size() + 8);
+  for (char c : s) {
+    switch (c) {
+      case '\"':
+        out += "\\\"";
+        break;
+      case '\\':
+        out += "\\\\";
+        break;
+      case '\b':
+        out += "\\b";
+        break;
+      case '\f':
+        out += "\\f";
+        break;
+      case '\n':
+        out += "\\n";
+        break;
+      case '\r':
+        out += "\\r";
+        break;
+      case '\t':
+        out += "\\t";
+        break;
+      default:
+        if (static_cast<unsigned char>(c) < 0x20) {
+          out += absl::StrFormat("\\u%04x", static_cast<int>(static_cast<unsigned char>(c)));
+        } else {
+          out.push_back(c);
+        }
+    }
+  }
+  return out;
+}
+
+int RunExport(const std::vector<std::string>& args) {
+  (void)args;
+
+  const std::string format = absl::GetFlag(FLAGS_format);
+  if (format != "json") {
+    throw std::runtime_error("Unsupported export format: " + format);
+  }
+
+  std::string out_flag = absl::GetFlag(FLAGS_out);
+  if (out_flag == "report.html") {
+    // Avoid writing JSON over the report default when no --out is given.
+    out_flag = "export.json";
+  }
+
+  const std::string data_path = ResolveDataPath(absl::GetFlag(FLAGS_data_path));
+  const std::string out_path = ResolveDataPath(out_flag);
+
+  Tracker tracker(data_path);
+  tracker.Load();
+
+  const auto& entries = tracker.Entries();
+
+  std::filesystem::path path(out_path);
+  if (path.has_parent_path()) {
+    std::filesystem::create_directories(path.parent_path());
+  }
+  std::ofstream out(out_path, std::ios::out | std::ios::trunc);
+  if (!out.is_open()) {
+    throw std::runtime_error("Failed to open export file for writing: " + out_path);
+  }
+
+  out << "[";
+  for (size_t i = 0; i < entries.size(); ++i) {
+    const Entry& e = entries[i];
+    out << "\n  {\"date\":\"" << JsonEscape(e.date) << "\",\"mood\":" << e.mood << ",\"note\":\""
+        << JsonEscape(e.note) << "\"}";
+    if (i + 1 < entries.size()) out << ",";
+  }
+  if (!entries.empty()) out << "\n";
+  out << "]\n";
+  out.close();
+
+  std::cout << "Export written to " << out_path << "\n";
+  return 0;
+}
+
 }  // namespace
 }  // namespace life_tracker
 
@@ -319,6 +417,9 @@ int main(int argc, char* argv[]) {
     }
     if (command == "report") {
       return life_tracker::RunReport(positional);
+    }
+    if (command == "export") {
+      return life_tracker::RunExport(positional);
     }
   } catch (const std::exception& e) {
     std::cerr << "Error: " << e.what() << "\n";

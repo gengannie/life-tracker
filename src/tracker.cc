@@ -26,8 +26,8 @@ void Tracker::Load() {
 
 void Tracker::Add(const Entry& entry) {
   // Basic validation.
-  if (entry.mood < 1 || entry.mood > 5) {
-    throw std::runtime_error("Mood must be between 1 and 5.");
+  if (entry.mood < 1 || entry.mood > 100) {
+    throw std::runtime_error("Mood must be between 1 and 100.");
   }
   if (entry.date.size() != 10) {
     throw std::runtime_error("Date must be YYYY-MM-DD.");
