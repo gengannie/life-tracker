@@ -1,4 +1,6 @@
 #include <algorithm>
+#include <cmath>
+#include <cstdlib>
 #include <ctime>
 #include <filesystem>
 #include <fstream>
@@ -12,6 +14,7 @@
 #include "absl/strings/str_format.h"
 #include "absl/time/time.h"
 #include "src/path_utils.h"
+#include "src/stats.h"
 #include "src/tracker.h"
 
 ABSL_FLAG(int, mood, 0, "Mood rating 1..100");
@@ -19,58 +22,14 @@ ABSL_FLAG(std::string, note, "", "Free-form note");
 ABSL_FLAG(std::string, date, "", "Date in YYYY-MM-DD (default: today)");
 ABSL_FLAG(std::string, data_path, "data/entries.csv", "Path to entries CSV");
 ABSL_FLAG(int, days, 7, "Number of days to include in reports");
-ABSL_FLAG(std::string, out, "report.html", "Where to write generated reports/exports");
+ABSL_FLAG(std::string, out, "report.html",
+          "Where to write generated reports/exports/dashboard data");
 ABSL_FLAG(std::string, format, "json", "Export format (currently: json)");
+ABSL_FLAG(bool, open, true, "Whether to open the dashboard URL after export");
+ABSL_FLAG(std::string, url, "http://localhost:3000", "Dashboard URL to open when --open=true");
 
 namespace life_tracker {
 namespace {
-
-struct DayMood {
-  absl::CivilDay day;
-  int mood;
-};
-
-struct SummaryStats {
-  bool has_data = false;
-  int count = 0;
-  double average_mood = 0.0;
-  DayMood best;
-  DayMood worst;
-};
-
-absl::CivilDay ParseCivilDay(const std::string& date_str) {
-  absl::Time timestamp;
-  if (!absl::ParseTime("%Y-%m-%d", date_str, absl::UTCTimeZone(), &timestamp, nullptr)) {
-    throw std::runtime_error("Invalid date in data: " + date_str);
-  }
-  return absl::ToCivilDay(timestamp, absl::UTCTimeZone());
-}
-
-SummaryStats ComputeSummary(const std::vector<DayMood>& samples) {
-  SummaryStats summary;
-  if (samples.empty()) return summary;
-
-  summary.has_data = true;
-  summary.count = static_cast<int>(samples.size());
-  summary.best = samples.front();
-  summary.worst = samples.front();
-
-  int total = 0;
-  for (const auto& sample : samples) {
-    total += sample.mood;
-    if (sample.mood > summary.best.mood ||
-        (sample.mood == summary.best.mood && sample.day < summary.best.day)) {
-      summary.best = sample;
-    }
-    if (sample.mood < summary.worst.mood ||
-        (sample.mood == summary.worst.mood && sample.day < summary.worst.day)) {
-      summary.worst = sample;
-    }
-  }
-
-  summary.average_mood = static_cast<double>(total) / summary.count;
-  return summary;
-}
 
 std::string RenderSvg(const std::vector<DayMood>& samples) {
   if (samples.empty()) {
@@ -209,13 +168,18 @@ void PrintUsage() {
   std::cerr << "Usage:\n"
             << "  life add --mood=42 --note=\"text\" [--date=YYYY-MM-DD]\n"
             << "  life list\n"
+            << "  life summary [--days=N]\n"
             << "  life report [--days=N] [--out=PATH]\n"
             << "  life export [--format=json] [--out=PATH]\n"
+            << "  life dashboard [--out=PATH] [--open=true] [--url=URL]\n"
             << "Flags:\n"
             << "  --data_path=PATH   Where to store entries (default: data/entries.csv)\n"
             << "  --days=N           Number of days to include in reports (default: 7)\n"
             << "  --out=PATH         Where to write reports/exports (default: report.html)\n"
-            << "  --format=FORMAT    Export format (default: json)\n";
+            << "  --format=FORMAT    Export format (default: json)\n"
+            << "  --open=true/false  Open dashboard URL after exporting data (default: true)\n"
+            << "  --url=URL          Dashboard URL to open when --open=true (default: "
+               "http://localhost:3000)\n";
 }
 
 int RunAdd(const std::vector<std::string>& args) {
@@ -267,28 +231,14 @@ int RunReport(const std::vector<std::string>& args) {
   (void)args;
 
   const int days = absl::GetFlag(FLAGS_days);
-  if (days <= 0) {
-    throw std::runtime_error("--days must be positive.");
-  }
-
   const std::string data_path = ResolveDataPath(absl::GetFlag(FLAGS_data_path));
   const std::string out_path = ResolveDataPath(absl::GetFlag(FLAGS_out));
 
   Tracker tracker(data_path);
   tracker.Load();
 
-  const absl::CivilDay today = absl::ToCivilDay(absl::Now(), absl::UTCTimeZone());
-  const absl::CivilDay cutoff = today - (days - 1);
-
-  std::vector<DayMood> samples;
-  for (const auto& entry : tracker.Entries()) {
-    const absl::CivilDay entry_day = ParseCivilDay(entry.date);
-    if (entry_day < cutoff) continue;
-    samples.push_back({entry_day, entry.mood});
-  }
-
-  std::sort(samples.begin(), samples.end(),
-            [](const DayMood& a, const DayMood& b) { return a.day < b.day; });
+  const std::vector<DayMood> samples = CollectRecentSamples(
+      tracker.Entries(), days, absl::ToCivilDay(absl::Now(), absl::UTCTimeZone()));
 
   const SummaryStats summary = ComputeSummary(samples);
   const std::string html = BuildReportHtml(samples, summary, days);
@@ -306,6 +256,18 @@ int RunReport(const std::vector<std::string>& args) {
 
   std::cout << "Report written to " << out_path << "\n";
   return 0;
+}
+
+bool OpenDashboardUrl(const std::string& url) {
+#if defined(_WIN32)
+  const std::string cmd = "start \"\" \"" + url + "\"";
+#elif defined(__APPLE__)
+  const std::string cmd = "open \"" + url + "\"";
+#else
+  const std::string cmd = "xdg-open \"" + url + "\"";
+#endif
+  const int rc = std::system(cmd.c_str());
+  return rc == 0;
 }
 
 std::string JsonEscape(const std::string& s) {
@@ -345,27 +307,25 @@ std::string JsonEscape(const std::string& s) {
   return out;
 }
 
-int RunExport(const std::vector<std::string>& args) {
-  (void)args;
-
+std::string ExportEntriesToJson(const std::string& out_flag, const std::string& default_out,
+                                int summary_days, absl::CivilDay today) {
   const std::string format = absl::GetFlag(FLAGS_format);
   if (format != "json") {
     throw std::runtime_error("Unsupported export format: " + format);
   }
 
-  std::string out_flag = absl::GetFlag(FLAGS_out);
-  if (out_flag == "report.html") {
-    // Avoid writing JSON over the report default when no --out is given.
-    out_flag = "export.json";
-  }
+  const std::string resolved_out_flag = (out_flag == "report.html") ? default_out : out_flag;
 
   const std::string data_path = ResolveDataPath(absl::GetFlag(FLAGS_data_path));
-  const std::string out_path = ResolveDataPath(out_flag);
+  const std::string out_path = ResolveDataPath(resolved_out_flag);
 
   Tracker tracker(data_path);
   tracker.Load();
 
   const auto& entries = tracker.Entries();
+  const std::vector<DayMood> samples = CollectRecentSamples(entries, summary_days, today);
+  const SummaryStats summary = ComputeSummary(samples);
+  const StreakStats streak = ComputeStreaks(entries, today);
 
   std::filesystem::path path(out_path);
   if (path.has_parent_path()) {
@@ -376,18 +336,135 @@ int RunExport(const std::vector<std::string>& args) {
     throw std::runtime_error("Failed to open export file for writing: " + out_path);
   }
 
-  out << "[";
+  out << "{\n";
+  out << "  \"meta\": {\"generated_at\":\""
+      << JsonEscape(absl::FormatTime(absl::Now(), absl::UTCTimeZone()))
+      << "\", \"days\":" << summary_days << "},\n";
+
+  out << "  \"summary\": {\n";
+  out << "    \"has_data\":" << (summary.has_data ? "true" : "false") << ",\n";
+  out << "    \"count\":" << summary.count << ",\n";
+  out << "    \"average_mood\":" << absl::StrFormat("%.1f", summary.average_mood) << ",\n";
+  out << "    \"stddev\":" << absl::StrFormat("%.1f", summary.stddev) << ",\n";
+  out << "    \"best\":";
+  if (summary.has_data) {
+    out << "{\"date\":\"" << JsonEscape(absl::FormatCivilTime(summary.best.day))
+        << "\",\"mood\":" << summary.best.mood << "}";
+  } else {
+    out << "null";
+  }
+  out << ",\n";
+  out << "    \"worst\":";
+  if (summary.has_data) {
+    out << "{\"date\":\"" << JsonEscape(absl::FormatCivilTime(summary.worst.day))
+        << "\",\"mood\":" << summary.worst.mood << "}";
+  } else {
+    out << "null";
+  }
+  out << "\n  },\n";
+
+  out << "  \"streak\": {\"current\":" << streak.current_streak
+      << ", \"longest\":" << streak.longest_streak << "},\n";
+
+  out << "  \"entries\": [";
   for (size_t i = 0; i < entries.size(); ++i) {
     const Entry& e = entries[i];
-    out << "\n  {\"date\":\"" << JsonEscape(e.date) << "\",\"mood\":" << e.mood << ",\"note\":\""
+    out << "\n    {\"date\":\"" << JsonEscape(e.date) << "\",\"mood\":" << e.mood << ",\"note\":\""
         << JsonEscape(e.note) << "\"}";
     if (i + 1 < entries.size()) out << ",";
   }
   if (!entries.empty()) out << "\n";
-  out << "]\n";
+  out << "  ]\n";
+  out << "}\n";
   out.close();
 
+  return out_path;
+}
+
+int RunExport(const std::vector<std::string>& args) {
+  (void)args;
+
+  const std::string out_flag = absl::GetFlag(FLAGS_out);
+  const absl::CivilDay today = absl::ToCivilDay(absl::Now(), absl::UTCTimeZone());
+  const int summary_days = absl::GetFlag(FLAGS_days);
+  const std::string out_path = ExportEntriesToJson(out_flag, "export.json", summary_days, today);
+
   std::cout << "Export written to " << out_path << "\n";
+  return 0;
+}
+
+int RunDashboard(const std::vector<std::string>& args) {
+  (void)args;
+
+  const std::string out_flag = absl::GetFlag(FLAGS_out);
+  const absl::CivilDay today = absl::ToCivilDay(absl::Now(), absl::UTCTimeZone());
+  const int summary_days = absl::GetFlag(FLAGS_days);
+  const std::string out_path =
+      ExportEntriesToJson(out_flag, "web/data/entries.json", summary_days, today);
+
+  const bool should_open = absl::GetFlag(FLAGS_open);
+  const std::string url = absl::GetFlag(FLAGS_url);
+
+  if (should_open) {
+    if (!OpenDashboardUrl(url)) {
+      std::cerr << "Dashboard data written to " << out_path
+                << " but opening the browser failed. Open manually: " << url << "\n";
+    }
+  }
+
+  std::cout << "Dashboard data written to " << out_path << ". Dashboard URL: " << url << "\n";
+  return 0;
+}
+
+int RunSummary(const std::vector<std::string>& args) {
+  (void)args;
+
+  const int days = absl::GetFlag(FLAGS_days);
+  const std::string data_path = ResolveDataPath(absl::GetFlag(FLAGS_data_path));
+
+  Tracker tracker(data_path);
+  tracker.Load();
+
+  const std::vector<DayMood> samples = CollectRecentSamples(
+      tracker.Entries(), days, absl::ToCivilDay(absl::Now(), absl::UTCTimeZone()));
+  if (samples.empty()) {
+    std::cout << "No entries in the last " << days << " day";
+    if (days != 1) std::cout << "s";
+    std::cout << ".\n";
+    return 0;
+  }
+
+  const SummaryStats summary = ComputeSummary(samples);
+
+  std::cout << "Entries: " << summary.count << "\n";
+  std::cout << "Average mood: " << absl::StrFormat("%.1f", summary.average_mood) << "\n";
+  std::cout << "Best day: " << absl::FormatCivilTime(summary.best.day) << " (" << summary.best.mood
+            << ")\n";
+  std::cout << "Worst day: " << absl::FormatCivilTime(summary.worst.day) << " ("
+            << summary.worst.mood << ")\n";
+  std::cout << "Mood volatility (std dev): " << absl::StrFormat("%.1f", summary.stddev) << "\n";
+
+  return 0;
+}
+
+int RunStreak(const std::vector<std::string>& args) {
+  (void)args;
+
+  const std::string data_path = ResolveDataPath(absl::GetFlag(FLAGS_data_path));
+
+  Tracker tracker(data_path);
+  tracker.Load();
+
+  const StreakStats stats =
+      ComputeStreaks(tracker.Entries(), absl::ToCivilDay(absl::Now(), absl::UTCTimeZone()));
+
+  std::cout << "Current streak: " << stats.current_streak << " day";
+  if (stats.current_streak != 1) std::cout << "s";
+  std::cout << "\n";
+  std::cout << "Longest streak: " << stats.longest_streak << " day";
+  if (stats.longest_streak != 1) std::cout << "s";
+  std::cout << "\n";
+
   return 0;
 }
 
@@ -415,11 +492,20 @@ int main(int argc, char* argv[]) {
     if (command == "list") {
       return life_tracker::RunList(positional);
     }
+    if (command == "summary") {
+      return life_tracker::RunSummary(positional);
+    }
     if (command == "report") {
       return life_tracker::RunReport(positional);
     }
     if (command == "export") {
       return life_tracker::RunExport(positional);
+    }
+    if (command == "dashboard") {
+      return life_tracker::RunDashboard(positional);
+    }
+    if (command == "streak") {
+      return life_tracker::RunStreak(positional);
     }
   } catch (const std::exception& e) {
     std::cerr << "Error: " << e.what() << "\n";

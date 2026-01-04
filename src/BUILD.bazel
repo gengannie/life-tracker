@@ -3,11 +3,13 @@ cc_library(
     srcs = [
         "entry.cc",
         "path_utils.cc",
+        "stats.cc",
         "tracker.cc",
     ],
     hdrs = [
         "entry.h",
         "path_utils.h",
+        "stats.h",
         "tracker.h",
     ],
     copts = ["-std=c++17"],
@@ -15,6 +17,7 @@ cc_library(
         "@abseil-cpp//absl/flags:flag",
         "@abseil-cpp//absl/flags:parse",
         "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/time:time",
     ],
 )
 
@@ -44,6 +47,16 @@ cc_test(
 cc_test(
     name = "path_utils_test",
     srcs = ["path_utils_test.cc"],
+    copts = ["-std=c++17"],
+    deps = [
+        "//src:life_lib",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "stats_test",
+    srcs = ["stats_test.cc"],
     copts = ["-std=c++17"],
     deps = [
         "//src:life_lib",

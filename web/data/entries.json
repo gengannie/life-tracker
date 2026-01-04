@@ -1,5 +1,15 @@
-[
-  { "date": "2026-01-03", "mood": 72, "note": "Great progress today." },
-  { "date": "2026-01-02", "mood": 55, "note": "Felt a bit tired, took a walk." },
-  { "date": "2026-01-01", "mood": 88, "note": "New year energy!" }
-]
+{
+  "meta": {"generated_at":"2026-01-04T05:29:17.357555+00:00", "days":7},
+  "summary": {
+    "has_data":true,
+    "count":1,
+    "average_mood":4.0,
+    "stddev":0.0,
+    "best":{"date":"2026-01-03","mood":4},
+    "worst":{"date":"2026-01-03","mood":4}
+  },
+  "streak": {"current":1, "longest":1},
+  "entries": [
+    {"date":"2026-01-03","mood":4,"note":"Had a productive day"}
+  ]
+}

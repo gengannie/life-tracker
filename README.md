@@ -3,9 +3,13 @@ Built with chat gpt 5.2
 
 # current functionality
 
-`life add --mood=3 --note="text" [--date=YYYY-MM-DD]`
-
-`life list`
+- Log an entry: `bazel run //src:life -- add --mood=42 --note="text" [--date=YYYY-MM-DD]`
+- List entries: `bazel run //src:life -- list`
+- Summaries (last N days): `bazel run //src:life -- summary --days=7`
+- Streaks: `bazel run //src:life -- streak`
+- HTML report: `bazel run //src:life -- report --days=7 --out="$PWD/report.html"`
+- JSON export: `bazel run //src:life -- export --format=json --out="$PWD/export.json"`
+- Dashboard data + open browser: `bazel run //src:life -- dashboard --out=web/data/entries.json --open=true --url=http://localhost:3000`
 
 ## dev
 
@@ -24,6 +28,18 @@ bazel build //...
 bazel run //src:life -- report --days=7 --out="$PWD/report.html"
 open report.html
 
+```
+
+dashboard (Next.js):
+
+```
+cd web
+npm install
+npm run dev
+
+# in another shell, refresh dashboard data
+cd ..
+bazel run //src:life -- dashboard --out=web/data/entries.json --open=false
 ```
 
 # prompt

@@ -1,12 +1,33 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import entriesData from "../data/entries.json";
+import exportedData from "../data/entries.json";
 
 type Entry = {
   date: string; // YYYY-MM-DD
   mood: number;
   note: string;
+};
+
+type Summary = {
+  has_data: boolean;
+  count: number;
+  average_mood: number;
+  stddev: number;
+  best: { date: string; mood: number } | null;
+  worst: { date: string; mood: number } | null;
+};
+
+type Streak = {
+  current: number;
+  longest: number;
+};
+
+type ExportedData = {
+  meta: { generated_at: string; days: number };
+  summary: Summary;
+  streak: Streak;
+  entries: Entry[];
 };
 
 type RangeOption = {
@@ -41,6 +62,36 @@ function formatDate(dateStr: string): string {
     month: "short",
     day: "numeric",
   });
+}
+
+function SummaryCards({ summary, streak, days }: { summary: Summary; streak: Streak; days: number }) {
+  const items = [
+    { label: "Entries", value: summary.count.toString() },
+    { label: "Avg mood", value: summary.has_data ? summary.average_mood.toFixed(1) : "—" },
+    { label: "Volatility", value: summary.has_data ? summary.stddev.toFixed(1) : "—" },
+    { label: "Current streak", value: `${streak.current}d` },
+    { label: "Longest streak", value: `${streak.longest}d` },
+    {
+      label: "Best day",
+      value: summary.best ? `${formatDate(summary.best.date)} (${summary.best.mood})` : "—",
+    },
+    {
+      label: "Worst day",
+      value: summary.worst ? `${formatDate(summary.worst.date)} (${summary.worst.mood})` : "—",
+    },
+    { label: "Range", value: `${days} day${days === 1 ? "" : "s"}` },
+  ];
+
+  return (
+    <div className="cards-grid">
+      {items.map((item) => (
+        <div key={item.label} className="stat-card">
+          <p className="eyebrow">{item.label}</p>
+          <div className="stat-value">{item.value}</div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function Chart({ entries }: { entries: Entry[] }) {
@@ -174,7 +225,8 @@ function EntriesTable({ entries }: { entries: Entry[] }) {
 
 export default function Page() {
   const [selectedRange, setSelectedRange] = useState<RangeOption>(RANGE_OPTIONS[0]);
-  const entries = useMemo(() => entriesData as Entry[], []);
+  const data = useMemo(() => exportedData as ExportedData, []);
+  const entries = data.entries || [];
   const filtered = useMemo(
     () => filterEntries(entries, selectedRange),
     [entries, selectedRange],
@@ -204,6 +256,8 @@ export default function Page() {
           ))}
         </div>
       </header>
+
+      <SummaryCards summary={data.summary} streak={data.streak} days={data.meta.days} />
 
       <div className="grid">
         <Chart entries={filtered} />

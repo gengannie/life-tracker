@@ -174,3 +174,25 @@ h1 {
 .note {
   color: #cbd5e1;
 }
+
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin: 12px 0 20px;
+}
+
+.stat-card {
+  background: linear-gradient(180deg, #0f172a, #0b1224);
+  border: 1px solid #1f2a44;
+  border-radius: 12px;
+  padding: 14px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+
+.stat-value {
+  font-size: 22px;
+  font-weight: 700;
+  margin-top: 6px;
+  color: #e2e8f0;
+}
