@@ -1,3 +1,5 @@
 [
-  {"date":"2026-01-03","mood":4,"note":"Had a productive day"}
+  { "date": "2026-01-03", "mood": 72, "note": "Great progress today." },
+  { "date": "2026-01-02", "mood": 55, "note": "Felt a bit tired, took a walk." },
+  { "date": "2026-01-01", "mood": 88, "note": "New year energy!" }
 ]
