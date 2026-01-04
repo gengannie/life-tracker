@@ -6,6 +6,7 @@
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "absl/strings/str_join.h"
+#include "src/path_utils.h"
 #include "src/tracker.h"
 
 ABSL_FLAG(int, mood, 0, "Mood rating 1..5");
@@ -45,7 +46,9 @@ int RunAdd(const std::vector<std::string>& args) {
   std::string date = absl::GetFlag(FLAGS_date);
   if (date.empty()) date = TodayIsoDate();
 
-  Tracker tracker(absl::GetFlag(FLAGS_data_path));
+  const std::string data_path = ResolveDataPath(absl::GetFlag(FLAGS_data_path));
+
+  Tracker tracker(data_path);
   tracker.Load();
 
   Entry e;
@@ -62,7 +65,9 @@ int RunAdd(const std::vector<std::string>& args) {
 int RunList(const std::vector<std::string>& args) {
   (void)args;
 
-  Tracker tracker(absl::GetFlag(FLAGS_data_path));
+  const std::string data_path = ResolveDataPath(absl::GetFlag(FLAGS_data_path));
+
+  Tracker tracker(data_path);
   tracker.Load();
 
   const auto& entries = tracker.Entries();

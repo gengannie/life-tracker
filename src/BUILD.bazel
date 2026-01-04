@@ -2,10 +2,12 @@ cc_library(
     name = "life_lib",
     srcs = [
         "entry.cc",
+        "path_utils.cc",
         "tracker.cc",
     ],
     hdrs = [
         "entry.h",
+        "path_utils.h",
         "tracker.h",
     ],
     copts = ["-std=c++17"],
@@ -30,6 +32,16 @@ cc_binary(
 cc_test(
     name = "entry_test",
     srcs = ["entry_test.cc"],
+    copts = ["-std=c++17"],
+    deps = [
+        "//src:life_lib",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "path_utils_test",
+    srcs = ["path_utils_test.cc"],
     copts = ["-std=c++17"],
     deps = [
         "//src:life_lib",
